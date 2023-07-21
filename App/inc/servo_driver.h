@@ -29,18 +29,18 @@
 
 
 typedef struct Servo {
-	TIM_HandleTypeDef *timer;
+	TIM_HandleTypeDef* timer;
 	uint32_t channel;
 	uint8_t targetPosition;
-	uint8_t currentPosition;
+	volatile uint8_t currentPosition;
 	uint8_t stepTime;
-//	uint16_t thresholdForce;
+	//	uint16_t thresholdForce;
 } Servo;
 
-void GRP_InitialiseServo(Servo *servo, TIM_HandleTypeDef *timer, uint32_t channel, uint8_t currentPosition);
-void GRP_SetServo(Servo *servo, uint8_t angle);
-void GRP_EnableServo(Servo *servo);
-void GRP_DisableServo(Servo *servo);
-void GRP_GoToPositionServo(Servo *servo);
+void SRV_Initialise(Servo* servo, TIM_HandleTypeDef* timer, uint32_t channel, uint8_t currentPosition);
+void SRV_Set(Servo* servo, uint8_t angle);
+void SRV_Enable(Servo* servo);
+void SRV_Disable(Servo* servo);
+void SRV_GoToPosition(Servo* servo);
 
 #endif /* INC_SERVO_DRIVER_H_ */

@@ -28,15 +28,23 @@
 /* USER CODE BEGIN Includes */
 #include "../../App/inc/servo_driver.h"
 #include "../../App/inc/MCP3008.h"
+#include "math.h"
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+#define RMS_FRAME_LEN 100
+typedef struct AdcRMS_t {
+	uint8_t lastAdcIndex;
+	uint16_t rawADC[RMS_FRAME_LEN];
+	float adcRMS;
+}AdcRMS_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,17 +56,27 @@
 
 /* USER CODE BEGIN PV */
 volatile uint16_t g_adcVal[3];
+MCP3008_SPI spi_mpc3008;
+//volatile uint16_t adc[3] = { 0 };
+uint16_t result[3];
+uint16_t cnt = 0;
+volatile AdcRMS_t g_adcRMS[3];
+Servo servo;
+bool g_updateAdcRMS = false;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+float CalculateRMS(volatile AdcRMS_t *adc);
+void ResetAdcRMSCalculation(volatile AdcRMS_t *adc);
+void WriteNewAdcValue(volatile AdcRMS_t *adc, volatile uint16_t adc_val[1]);
+void UpdateAdcRMS();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-MCP3008_SPI spi_mpc3008;
+
 /* USER CODE END 0 */
 
 /**
@@ -94,53 +112,67 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_SPI1_Init();
+  MX_TIM14_Init();
   /* USER CODE BEGIN 2 */
 //  HAL_GPIO_Init(TEMP_GPIO_POTENTIOMETER_GPIO_Port, )
 //  HAL_GPIO_WritePin(TEMP_GPIO_POTENTIOMETER_GPIO_Port, TEMP_GPIO_POTENTIOMETER_Pin, 1);
 //  HAL_Delay(2000);
-  Servo servo;
-  GRP_InitialiseServo(&servo, &SERVO_0_TIMER, SERVO_0_CHANNEL, 90);
-  GRP_SetServo(&servo, 10);
-  GRP_EnableServo(&servo);
+  SRV_Initialise(&servo, &SERVO_0_TIMER, SERVO_0_CHANNEL, 90);
+  SRV_Set(&servo, 10);
+  SRV_Enable(&servo);
+  SRV_GoToPosition(&servo);
+  for(int i = 0; i < 3; i++){
+	  g_adcRMS[i].lastAdcIndex = 0;
+	  ResetAdcRMSCalculation(&g_adcRMS[i]);
+  }
+  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Base_Start_IT(&htim14);
+  HAL_ADC_Start_DMA(&hadc1, g_adcVal, 3);
 
-//  HAL_ADC_Start_DMA(&hadc1, &g_adcVal, 3);
+//  for(int i = 0 ; i < 3; i++){
+//	  HAL_ADC_Start(&hadc1);
+//	  HAL_ADC_PollForConversion(&hadc1, 100);
+//	  g_adcVal[i] = HAL_ADC_GetValue(&hadc1);
+//  }
 
-	MCP3008_Init(&spi_mpc3008, &hspi1, SPI_CS_GPIO_Port, SPI_CS_Pin);
-	uint16_t adc0 = MCP3008_Read_Channel(&spi_mpc3008, 0); // Channel 0
-	uint16_t adc1 = MCP3008_Read_Channel(&spi_mpc3008, 1); // Channel 1
-	uint16_t adc2 = MCP3008_Read_Channel(&spi_mpc3008, 2); // Channel 2
-	uint16_t adc3 = MCP3008_Read_Channel(&spi_mpc3008, 3); // Channel 3
-	uint16_t adc4 = MCP3008_Read_Channel(&spi_mpc3008, 4); // Channel 4
-	uint16_t adc5 = MCP3008_Read_Channel(&spi_mpc3008, 5); // Channel 5
-	uint16_t adc6 = MCP3008_Read_Channel(&spi_mpc3008, 6); // Channel 6
-	uint16_t adc7 = MCP3008_Read_Channel(&spi_mpc3008, 7); // Channel 7
+//  MCP_Init(&spi_mpc3008, &hspi1, SPI_CS_GPIO_Port, SPI_CS_Pin);
+//  for (int i = 0; i < 8; i++) {
+//    adc[i] = MCP_Read_Channel(&spi_mpc3008, i);
+//  }
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-//	  HAL_GPIO_TogglePin(TEMP_GPIO_POTENTIOMETER_GPIO_Port, TEMP_GPIO_POTENTIOMETER_Pin);
-	  if(servo.currentPosition <= 80){
-		  servo.targetPosition = 110;
-	  }
-	  else if(servo.currentPosition >= 110){
-		  servo.targetPosition = 80;
-	  }
-	  GRP_GoToPositionServo(&servo);
-	  HAL_Delay(servo.stepTime);
-//	  HAL_GPIO_WritePin(spi_mpc3008.CS_PORT, spi_mpc3008.CS_PIN, GPIO_PIN_RESET);
-//	  HAL_Delay(500);
-//	  HAL_GPIO_WritePin(spi_mpc3008.CS_PORT, spi_mpc3008.CS_PIN, GPIO_PIN_SET);
-	  adc0 = MCP3008_Read_Channel(&spi_mpc3008, 0); // Channel 0
-	  adc1 = MCP3008_Read_Channel(&spi_mpc3008, 1); // Channel 1
-	  adc2 = MCP3008_Read_Channel(&spi_mpc3008, 2); // Channel 2
-	  adc3 = MCP3008_Read_Channel(&spi_mpc3008, 3); // Channel 3
-	  adc4 = MCP3008_Read_Channel(&spi_mpc3008, 4); // Channel 4
-	  adc5 = MCP3008_Read_Channel(&spi_mpc3008, 5); // Channel 5
-	  adc6 = MCP3008_Read_Channel(&spi_mpc3008, 6); // Channel 6
-	  adc7 = MCP3008_Read_Channel(&spi_mpc3008, 7); // Channel 7
+  while (1) {
+    //	  HAL_GPIO_TogglePin(TEMP_GPIO_POTENTIOMETER_GPIO_Port, TEMP_GPIO_POTENTIOMETER_Pin);
+//    if (servo.currentPosition <= 40) {
+//      servo.targetPosition = 140;
+//    }
+//    else if (servo.currentPosition >= 140) {
+//      servo.targetPosition = 40;
+//    }
+
+//    HAL_Delay(servo.stepTime);
+    if(g_updateAdcRMS){
+    	UpdateAdcRMS();
+    }
+//    result[1] -= 2122;
+
+//    for(int i = 0 ; i < 3; i++){
+//		  HAL_ADC_Start(&hadc1);
+//    	  HAL_ADC_PollForConversion(&hadc1, 100);
+//    	  g_adcVal = hadc1->Instance->DR;
+//    	  g_adcVal[0] = HAL_ADC_GetValue(&hadc1);
+//    	  g_adcVal[1] = HAL_ADC_GetValue(&hadc1);
+//    	  g_adcVal[2] = HAL_ADC_GetValue(&hadc1);
+//      }
+    //	  HAL_GPIO_WritePin(spi_mpc3008.CS_PORT, spi_mpc3008.CS_PIN, GPIO_PIN_RESET);
+    //	  HAL_Delay(500);
+    //	  HAL_GPIO_WritePin(spi_mpc3008.CS_PORT, spi_mpc3008.CS_PIN, GPIO_PIN_SET);
+//    for (int i = 0; i < 8; i++) {
+//      adc[i] = MCP_Read_Channel(&spi_mpc3008, i);
+//    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -189,6 +221,63 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+float CalculateRMS(volatile AdcRMS_t *adc) {
+	/**
+	 * @brief Calculate Root Mean Square with moving frame value
+	 * @retval Root Mean Square value
+	 */
+
+	uint32_t square = 0;
+	float mean = 0.0;
+//	float square_root = 0.0;
+
+	for (uint8_t i = 0; i < RMS_FRAME_LEN; i++) {
+		square += powf(adc->rawADC[i], 2);
+	}
+
+	mean = (square / (float) RMS_FRAME_LEN);
+	adc->adcRMS = sqrtf(mean);
+	return adc->adcRMS;
+//	square_root = sqrtf(mean);
+//	return square_root;
+}
+
+void ResetAdcRMSCalculation(volatile AdcRMS_t* adc) {
+	/* initialize array with zeros */
+	for (uint8_t i = 0; i < RMS_FRAME_LEN - 1; i++) {
+		adc->rawADC[i] = 0;
+	}
+}
+
+void WriteNewAdcValue(volatile AdcRMS_t *adc, volatile uint16_t *adc_val) {
+	adc->rawADC[adc->lastAdcIndex] = *adc_val;
+	if(adc->lastAdcIndex >= RMS_FRAME_LEN){
+		adc->lastAdcIndex = 0;
+	}
+//	CalculateRMS(adc);
+	adc->lastAdcIndex++;
+}
+
+void UpdateAdcRMS(){
+	 for(int i = 0; i < 3; i++){
+//		  WriteNewAdcValue(&g_adcRMS[i], &g_adcVal[i]);
+		  CalculateRMS(&g_adcRMS[i]);
+	  }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  // Check which version of the timer triggered this callback and toggle LED
+  if (htim == &htim3 ) {
+	  for(int i = 0; i < 3; i++){
+	  		  WriteNewAdcValue(&g_adcRMS[i], &g_adcVal[i]);
+	  	  }
+	 g_updateAdcRMS = true;
+  }
+  if (htim == &htim14 ) {
+//	  SRV_GoToPosition(&servo);
+    }
+}
 
 /* USER CODE END 4 */
 
@@ -201,8 +290,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  while (1)
-  {
+  while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
 }
